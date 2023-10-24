@@ -126,6 +126,7 @@ pub enum TokenKind {
 
 }
 
+
 impl From<String> for TokenKind {
     fn from(value: String) -> TokenKind {
         TokenKind::Identifier(value)
