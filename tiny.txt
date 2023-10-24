@@ -6,6 +6,8 @@
     RETURN z;
  END
  /** foo **/
+ /**
+ **/
  INT MAIN f1()
  BEGIN
     INT x;
