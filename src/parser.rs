@@ -1,11 +1,13 @@
 use std::iter::Peekable;
 use std::vec::IntoIter;
 use crate::lexer::TokenKind;
+
+#[derive(Debug)]
 pub(crate) enum ParseError {
     SyntaxError(String),
     Fail(String)
 }
-
+#[derive(Debug)]
 pub(crate) struct Parser {
     pub(crate) tokens: Peekable<IntoIter<TokenKind>>,
 }
@@ -13,7 +15,7 @@ pub(crate) struct Parser {
 impl Parser {
     pub(crate) fn parse(&mut self) -> Result<Node, ParseError> {
         match self.program() {
-            None => Err(ParseError::Fail(String::from("Failed to parse"))),
+            None => Err(ParseError::Fail(String::from("Failed to parse file, see individual syntax errors"))),
             Some(tree) => Ok(tree)
         }
     }
@@ -21,10 +23,6 @@ impl Parser {
     /// Program -> MethodDeclaration+
     fn program(&mut self) -> Option<Node> {
         let mut methods: Vec<Box<Node>> = vec![];
-        match self.method_declaration() {
-            None => { return None } //todo parse error here
-            Some(method) => methods.push(Box::new(method))
-        }
         while let Some(method) = self.method_declaration() {
             methods.push(Box::new(method))
         }
@@ -43,15 +41,22 @@ impl Parser {
             // we got what we wanted, discard the MAIN token
             self.next();
         }
-        let next = self.next();
-        let method_name = identifier(&next)?;
-        if self.next() != TokenKind::Lparen {
-            return None //todo syntax error
-        }
-        let parameters = self.formal_parameters()?;
 
-        if self.next() != TokenKind::Rparen {
-            return  None // todo syntax error
+        let method_name = identifier(&self.next())?;
+        let next = self.next();
+        if next!= TokenKind::Lparen {
+            println!("Expected left parenthesis got {:?} instead", next);
+            return None
+        }
+        let parameters =  match self.formal_parameters() {
+            None => None,
+            Some(params) => Option::from(Box::new(params))
+        };
+
+        let next = self.next();
+        if next != TokenKind::Rparen {
+            println!("Expected right parenthesis got {:?} instead", next);
+            return  None
         }
         let body = self.block()?;
         Some(
@@ -59,28 +64,27 @@ impl Parser {
                 return_type: Box::new(Node::Type(ttype)),
                 is_main,
                 name: method_name,
-                formal_parameters: Box::new(parameters),
+                formal_parameters: parameters,
                 body: Box::new(body)
             }
         )
     }
     ///BEGIN Statement+ END
     fn block(&mut self) -> Option<Node> {
-        if !matches(&self.next(), "BEGIN") {
+        let next = self.next();
+        if !matches(&next, "BEGIN") {
             return None
         }
         let mut statements:Vec<Box<Node>> = vec![];
 
-        match self.statement() {
-            None => { return None } //todo parse error here
-            Some(s) => statements.push(Box::new(s))
-        }
         while let Some(statement) = self.statement() {
             statements.push(Box::new(statement))
         }
 
-        if !matches(&self.next(), "END") {
-            return None //todo parse error
+        let next = self.next();
+        if !matches(&next, "END") {
+            println!("Expected END got {:?} instead", next);
+            return None
         }
         Some(Node::Block {statements})
     }
@@ -95,34 +99,47 @@ impl Parser {
                     "READ" => self.read_statement(),
                     "IF" => self.if_statement(),
                     "RETURN" => self.return_statement(),
+                    "END" => None,
                     _ =>  {
                         if ttype(lookahead).is_some() {
                             return self.variable_declaration()
                         }
-                        return self.assignment_statement()
+                        let next = self.next();
+                        return self.assignment_statement(next)
                     }
                 }
             }
-            _ => None //todo syntax error
+            _ => {
+                None
+            }
         }
     }
 
     /// LocalVarDecl -> Type Id ';' | Type AssignmentStmt
     fn variable_declaration(&mut self) -> Option<Node> {
-        let ttype = match ttype(&self.next()) {
-            None => return None, //todo syntax error
+        let next = self.next();
+        let ttype = match ttype(&next) {
+            None => {
+                println!("Expected type token got {:?} instead", next);
+                return None
+            },
             Some(s) => s
         };
         let ttype = Box::new(Node::Type(ttype));
-        //do not move the iterator yet to the current token
-        let var_name = match identifier(self.peek()) {
-            None => return None, //todo syntax error
+        //do not move the iterator yet to the current token as we will need
+        //the identifier for the assignment too
+        let peek = self.peek();
+        let var_name = match identifier(peek) {
+            None => {
+                println!("Expected identifier got {:?} instead", peek);
+                return None
+            },
             Some(x) => x
         };
+        let next = self.next();
         // we perform a lookahead of 1 here to check if we have an assignment statement or just
-        // a variable declaration
+        // a variable declaration. we parse assignments into a declaration and and an assignment
         return if *self.peek() == TokenKind::Semi {
-            self.next(); //consume the variable name (Id)
             self.next(); //consume the semi colon
             Some(
                 Node::LocalVariableDeclaration {
@@ -132,7 +149,7 @@ impl Parser {
                 }
             )
         } else {
-            let assignment = self.assignment_statement()?;
+            let assignment = self.assignment_statement(next)?;
             Some(
                 Node::LocalVariableDeclaration {
                     ttype,
@@ -144,18 +161,25 @@ impl Parser {
         }
     }
     /// Id := Expression ';'
-    fn assignment_statement(&mut self) -> Option<Node> {
-        let id = match identifier(&self.next()) {
-            None => return None, //todo syntax error
+    fn assignment_statement(&mut self, next: TokenKind) -> Option<Node> {
+        let id = match identifier(&next) {
+            None => {
+                println!("Expected Identifier got: {:?} instead", next);
+                return None
+            },
             Some(x) => x
         };
-        if self.next() != TokenKind::Assign {
-            return None //todo syntax error
+        let next = self.next();
+        if next != TokenKind::Assign {
+            println!("Expected ':=' got: {:?} instead", next);
+            return None
         }
         let value = self.expression()?;
 
-        if self.next() != TokenKind::Semi {
-            return None //todo syntax error
+        let next = self.next();
+        if next != TokenKind::Semi {
+            println!("Expected ';' got: {:?} instead", next);
+            return None
         }
 
         Some(
@@ -171,11 +195,11 @@ impl Parser {
             return None
         }
         let expression = self.expression()?;
-
-        if self.next() != TokenKind::Semi {
-            return None //todo syntax error
+        let next = self.next();
+        if next != TokenKind::Semi {
+            println!("Expected ';' got {:?} instead", next);
+            return None
         }
-
         Some(Node::ReturnStatement {
             expression
         })
@@ -185,13 +209,17 @@ impl Parser {
         if !matches(&self.next(), "IF") {
             return None
         }
-        if self.next() != TokenKind::Lparen {
-            return None //todo syntax error
+        let next = self.next();
+        if next != TokenKind::Lparen {
+            println!("Expected '(' got {:?} instead", next);
+            return None
         }
         let condition = self.bool_expression()?;
 
-        if self.next() != TokenKind::Rparen {
-            return None //todo syntax error
+        let next = self.next();
+        if next != TokenKind::Rparen {
+            println!("Expected ')' got {:?} instead", next);
+            return None
         }
         let mut statements: Vec<Box<Node>> = vec![];
         statements.push(Box::new(self.statement()?));
@@ -215,22 +243,30 @@ impl Parser {
         if !matches(&self.next(), "READ") {
             return None
         }
-        if self.next() != TokenKind::Lparen {
-            return None //todo syntax error
+        let next = self.next();
+        if next != TokenKind::Lparen {
+            println!("Expected left parenthesis got {:?} instead", next);
+            return None
         }
         let id = identifier(&self.next())?;
 
-        if self.next() != TokenKind::Comma {
-            return None //todo syntax error
+        let next = self.next();
+        if next != TokenKind::Comma {
+            println!("Expected comma {:?} instead", next);
+            return None
         }
 
         let value = self.q_string()?;
 
-        if self.next() != TokenKind::Rparen {
-            return None //todo syntax error
+        let next = self.next();
+        if next != TokenKind::Rparen {
+            println!("Expected ')' got {:?} instead", next);
+            return None
         }
-        if self.next() != TokenKind::Semi {
-            return None //todo syntax error
+        let next = self.next();
+        if next != TokenKind::Semi {
+            println!("Expected ';' got {:?} instead", next);
+            return None
         }
 
         Some(Node::Statement {
@@ -245,23 +281,28 @@ impl Parser {
         if !matches(&self.next(), "WRITE") {
             return None
         }
-        if self.next() != TokenKind::Lparen {
-            return None //todo syntax error
+        let next = self.next();
+        if next != TokenKind::Lparen {
+            println!("Expected left parenthesis got {:?} instead", next);
+            return None
         }
-        let expression = match self.expression() {
-            None => { return None}//todo syntax error
-            Some(e) => {e}
-        };
+        let expression = self.expression()?;
 
-        if self.next() != TokenKind::Comma {
-            return None //todo syntax error
+        let next = self.next();
+        if next != TokenKind::Comma {
+            println!("Expected comma {:?} instead", next);
+            return None
         }
         let value = self.q_string()?;
 
-        if self.next() != TokenKind::Rparen {
+        let next = self.next();
+        if next != TokenKind::Rparen {
+            println!("Expected ')' got {:?} instead", next);
             return None
         }
-        if self.next() != TokenKind::Semi {
+        let next = self.next();
+        if next != TokenKind::Semi {
+            println!("Expected ';' got {:?} instead", next);
             return None
         }
         Some(Node::Statement {
@@ -275,21 +316,150 @@ impl Parser {
 
     /// any value enclosed in quotation marks
     fn q_string(&mut self) -> Option<Literal> {
-        match self.next() {
+        let next = self.next();
+        match next {
             TokenKind::Identifier(x) => Some(Literal::STRING(x)),
-            _ => None //todo syntax error
+            _ => {
+                println!("Expected Identifier got {:?} instead", next);
+                None
+            }
         }
     }
+    /// Expression -> MultiplicativeExpr  (( '+' | '-' ) MultiplicativeExpr)*
     fn expression(&mut self) -> Option<Expression> {
-        None
+        let exp = self.multiplicative_expr()?;
+        let mut peek = self.peek();
+        let mut rhs: Vec<Box<Expression>> = vec![];
+
+        while *peek == TokenKind::Plus || *peek == TokenKind::Minus {
+            let op = if self.next() == TokenKind::Plus {
+                MathOperator::Plus
+            } else {
+                MathOperator::Minus
+            };
+            let rhs_exp = self.multiplicative_expr()?;
+            rhs.push(
+                Box::from(Expression::PlusMinus {
+                    op,
+                    rhs: Box::new(rhs_exp)
+                })
+            );
+            peek = self.peek();
+        }
+
+        Some(
+            Expression::Multiplicative {
+                lhs: Box::new(exp),
+                rhs
+            }
+        )
+    }
+    /// MultiplicativeExpr -> PrimaryExpr (( '*' | '/' ) PrimaryExpr)*
+    fn multiplicative_expr(&mut self) -> Option<Expression> {
+        let exp = self.primary_expr()?;
+        let mut peek = self.peek();
+        let mut rhs: Vec<Box<Expression>> = vec![];
+
+        while *peek == TokenKind::Mul || *peek == TokenKind::Div {
+            let op = if self.next() == TokenKind::Mul {
+                MathOperator::Mul
+            } else {
+                MathOperator::Div
+            };
+            let rhs_exp = self.primary_expr()?;
+            rhs.push(
+                Box::from(Expression::MulDiv {
+                    op,
+                    rhs: Box::new(rhs_exp)
+                })
+            );
+            peek = self.peek();
+        }
+
+        Some(
+            Expression::Multiplicative {
+                lhs: Box::new(exp),
+                rhs
+            }
+        )
+    }
+    ///PrimaryExpr -> Num  // Integer or Real numbers
+    ///              | Id
+    ///              | '(' Expression ')'
+    ///              | Id '(' ActualParams ')'
+    fn primary_expr(&mut self) -> Option<Expression> {
+        let next = self.next();
+        if next == TokenKind::Lparen {
+            let expr = self.expression()?;
+            let next = self.next();
+            if next != TokenKind::Rparen {
+                println!("Expected ')' got {:?} instead", next);
+                return None;
+            }
+            return Some(Expression::Expression {value: Box::new(expr) })
+        }
+        return match next {
+            TokenKind::Integer(i) => {
+                Some(Expression::Primitive {value: Literal::INT(i)})
+            }
+            TokenKind::Real(r) => Some(Expression::Primitive {value: Literal::REAL(r)}),
+            TokenKind::Identifier(s) => {
+                let peek = self.peek();
+                return if *peek == TokenKind::Lparen {
+                    self.next(); // consume the lparen
+                    let params = match self.actual_params() {
+                        None => None,
+                        Some(params) => Option::from(Box::new(params))
+                    };
+                    let next = self.next();
+                    if next != TokenKind::Rparen {
+                        println!("Expected ')' got {:?} instead", next);
+                        return None
+                    }
+                    Some(
+                        Expression::MethodCall {
+                            id: Box::from(Expression::Id(s)),
+                            params,
+                        }
+                    )
+                } else {
+                    Some(
+                        Expression::Id(s)
+                    )
+                }
+            }
+            _ => {
+                println!("Could not recognise expression to parse at token: {:?}", next);
+                None
+            }
+        }
+
+    }
+    /// ActualParams -> [Expression ( ',' Expression)*]
+    fn actual_params(&mut self)-> Option<Expression> {
+        let mut params: Vec<Box<Expression>> = vec![];
+        if let Some(param) = self.expression() {
+            params.push(Box::new(param))
+        }
+
+        while *self.peek() == TokenKind::Comma {
+            self.next(); // discard the comma
+            params.push(Box::new(self.expression()?));
+        }
+
+        Some(Expression::ActualParameters {params})
     }
 
     fn bool_expression(&mut self) -> Option<Expression> {
         let lhs = self.expression()?;
-        let operator = match self.next() {
+        let next = self.next();
+        let operator = match next {
             TokenKind::Equal => { BoolOperator::Equal }
             TokenKind::NotEqual => { BoolOperator::NotEqual }
-            _=> { return None } //todo parse error
+            _=> {
+                println!("Expected boolean operator got {:?} instead", next);
+                return None
+            }
         };
         let rhs = self.expression()?;
 
@@ -309,10 +479,7 @@ impl Parser {
 
         while *self.peek() == TokenKind::Comma {
             self.next(); // discard the comma
-            match self.formal_parameter() {
-                None => { return None } //todo parse error
-                Some(param) => params.push(Box::new(param))
-            }
+            params.push(Box::from(self.formal_parameter()?));
         }
 
         Some(Node::FormalParameters {parameters: params})
@@ -320,34 +487,36 @@ impl Parser {
 
     /// FormalParam -> Type Id
     fn formal_parameter(&mut self) -> Option<Node> {
-        let ttype = ttype(&self.next())?;
-        let identifier = identifier(&self.next())?;
+        let peek = self.peek();
+        let ttype = ttype(peek)?;
+        self.next(); // consume the peeked token since we found a parameter
+        let next = self.next();
+        let identifier = identifier(&next)?;
         Some(Node::FormalParameter {
             ttype: Box::new(Node::Type(ttype)),
             name: identifier
         })
     }
-
-    
-
+    ///We don't want to fail if we've reached the end so return a None reference
     fn peek(&mut self) -> &TokenKind {
-        self.tokens.peek().expect("Could not peek; no tokens left")
+        self.tokens.peek().unwrap_or(&TokenKind::None)
     }
-
     fn next(&mut self) -> TokenKind {
-        self.tokens.next().expect("Could not get next; no tokens left")
+        self.tokens.next().unwrap_or(TokenKind::None)
     }
 
 }
 
-fn identifier(token: &TokenKind) -> Option<Literal> {
+fn identifier(token: &TokenKind) -> Option<Expression> {
     match token {
-        TokenKind::Identifier(x) => { Some(Literal::STRING(x.clone()))}
+        TokenKind::Identifier(x) =>
+            Some(
+                Expression::Id(x.clone())
+            ),
         _ => None
     }
 }
 
-/// INT | REAL | STRING
 fn ttype(token: &TokenKind) -> Option<String>{
     match token {
         TokenKind::Identifier(x) if (x=="INT" || x=="REAL" || x=="STRING") => Some(x.clone()),
@@ -356,20 +525,21 @@ fn ttype(token: &TokenKind) -> Option<String>{
 }
 fn matches(token: &TokenKind, target: &str) ->bool {
     match token {
-        TokenKind::Identifier(x) if x == target => { true },
-        _ => { false }
+        TokenKind::Identifier(x) if x == target => true ,
+        _ => false
     }
 }
+#[derive(Debug)]
 pub(crate) enum Node {
     Program{
         method_declarations: Vec<Box<Node>>
     },
     MethodDeclaration {
-        name: Literal,
+        name: Expression,
         return_type: Box<Node>,
         body: Box<Node>,
         is_main: bool,
-        formal_parameters: Box<Node>
+        formal_parameters: Option<Box<Node>>
     },
     Block {
       statements: Vec<Box<Node>>
@@ -379,11 +549,11 @@ pub(crate) enum Node {
     },
     LocalVariableDeclaration {
         ttype: Box<Node>,
-        name: Literal,
+        name: Expression,
         value: Option<Box<Node>>
     },
     AssignmentStatement {
-        id: Literal,
+        id: Expression,
         value: Expression
     },
     ReturnStatement {
@@ -394,7 +564,7 @@ pub(crate) enum Node {
         body: Box<Node>
     },
     ReadStatement {
-        id: Literal,
+        id: Expression,
         q_string: Literal
     },
     WriteStatement {
@@ -407,30 +577,61 @@ pub(crate) enum Node {
     },
     FormalParameter {
         ttype: Box<Node>,
-        name: Literal
+        name: Expression
     }
 }
-
+#[derive(Debug)]
 pub(crate) enum Expression {
-    Multiplicative,
-    Primary,
+    Expression {
+        value: Box<Expression>
+    },
+    Multiplicative {
+        lhs: Box<Expression>,
+        rhs: Vec<Box<Expression>>
+    },
+    PlusMinus {
+        op: MathOperator,
+        rhs: Box<Expression>
+    },
+    MulDiv {
+        op: MathOperator,
+        rhs: Box<Expression>
+    },
+    Primitive {
+        value: Literal
+    },
+    Id(String),
+    MethodCall {
+        id: Box<Expression>,
+        params: Option<Box<Expression>>
+    },
     Boolean{
         lhs: Box<Expression>,
         rhs: Box<Expression>,
         op: BoolOperator
     },
-    ActualParameters,
+    ActualParameters {
+        params: Vec<Box<Expression>>
+    },
 }
-
+#[derive(Debug)]
 pub(crate) enum Literal {
     STRING(String),
     INT(usize),
     REAL(f64)
 }
-
+#[derive(Debug)]
 pub(crate) enum BoolOperator {
     Equal,
     NotEqual
+}
+
+#[derive(Debug)]
+pub(crate) enum MathOperator {
+    Plus,
+    Minus,
+    Mul,
+    Div
 }
 
 

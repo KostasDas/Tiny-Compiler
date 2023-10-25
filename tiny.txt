@@ -17,6 +17,10 @@
     INT z;
     z := f2(x,y) + f2(y,x);
     WRITE (z, "A4.output");
-    WRITE (b, 32);
-    WRITE (a, 32.1);
+ END
+ INT Foo(REAL x, INT y, STRING bar)
+ BEGIN
+    INT z;
+    z:= x + y - (x + y);
+    RETURN bar;
  END
