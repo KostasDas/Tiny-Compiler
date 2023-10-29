@@ -1,5 +1,5 @@
 # Tiny-Compiler
-A compiler for the [tiny language]([url](https://jlu.myweb.cs.uwindsor.ca/214/language.htm)https://jlu.myweb.cs.uwindsor.ca/214/language.htm) writtern in rust
+A compiler for the [tiny language](https://jlu.myweb.cs.uwindsor.ca/214/language.htm) writtern in Rust
 
 Uses a recursive descent hand coded parser.
 
