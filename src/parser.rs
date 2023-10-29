@@ -5,8 +5,9 @@ use crate::lexer::TokenKind;
 #[derive(Debug)]
 pub(crate) enum ParseError {
     SyntaxError(String),
-    Fail(String)
+    Fail(String),
 }
+
 #[derive(Debug)]
 pub(crate) struct Parser {
     pub(crate) tokens: Peekable<IntoIter<TokenKind>>,
@@ -26,16 +27,15 @@ impl Parser {
         while let Some(method) = self.method_declaration() {
             methods.push(Box::new(method))
         }
-        Some(Node::Program{
+        Some(Node::Program {
             method_declarations: methods
         })
     }
 
-    //todo add meaningful messages
     /// Type [MAIN] Identifier '(' FormalParams ')' Block
     fn method_declaration(&mut self) -> Option<Node> {
         let next = self.next();
-        let ttype = ttype(&next)?;
+        let return_type = to_type(&next)?;
         let is_main = matches(self.peek(), "MAIN");
         if is_main {
             // we got what we wanted, discard the MAIN token
@@ -44,11 +44,11 @@ impl Parser {
 
         let method_name = identifier(&self.next())?;
         let next = self.next();
-        if next!= TokenKind::Lparen {
+        if next != TokenKind::Lparen {
             println!("Expected left parenthesis got {:?} instead", next);
-            return None
+            return None;
         }
-        let parameters =  match self.formal_parameters() {
+        let parameters = match self.formal_parameters() {
             None => None,
             Some(params) => Option::from(Box::new(params))
         };
@@ -56,16 +56,16 @@ impl Parser {
         let next = self.next();
         if next != TokenKind::Rparen {
             println!("Expected right parenthesis got {:?} instead", next);
-            return  None
+            return None;
         }
         let body = self.block()?;
         Some(
             Node::MethodDeclaration {
-                return_type: Box::new(Node::Type(ttype)),
+                return_type: Box::new(Node::Type(return_type)),
                 is_main,
                 name: method_name,
                 formal_parameters: parameters,
-                body: Box::new(body)
+                body: Box::new(body),
             }
         )
     }
@@ -73,9 +73,9 @@ impl Parser {
     fn block(&mut self) -> Option<Node> {
         let next = self.next();
         if !matches(&next, "BEGIN") {
-            return None
+            return None;
         }
-        let mut statements:Vec<Box<Node>> = vec![];
+        let mut statements: Vec<Box<Node>> = vec![];
 
         while let Some(statement) = self.statement() {
             statements.push(Box::new(statement))
@@ -84,9 +84,9 @@ impl Parser {
         let next = self.next();
         if !matches(&next, "END") {
             println!("Expected END got {:?} instead", next);
-            return None
+            return None;
         }
-        Some(Node::Block {statements})
+        Some(Node::Block { statements })
     }
     /// Statement -> Block | LocalVarDecl | AssignStmt | ReturnStmt | IfStmt | WriteStmt | ReadStmt
     fn statement(&mut self) -> Option<Node> {
@@ -100,40 +100,40 @@ impl Parser {
                     "IF" => self.if_statement(),
                     "RETURN" => self.return_statement(),
                     "END" => None,
-                    _ =>  {
-                        if ttype(lookahead).is_some() {
-                            return self.variable_declaration()
+                    _ => {
+                        if to_type(lookahead).is_some() {
+                            return self.variable_declaration();
                         }
                         let next = self.next();
-                        return self.assignment_statement(next)
+                        return self.assignment_statement(next);
                     }
                 }
             }
             _ => {
                 None
             }
-        }
+        };
     }
 
     /// LocalVarDecl -> Type Id ';' | Type AssignmentStmt
     fn variable_declaration(&mut self) -> Option<Node> {
         let next = self.next();
-        let ttype = match ttype(&next) {
+        let var_type = match to_type(&next) {
             None => {
                 println!("Expected type token got {:?} instead", next);
-                return None
-            },
+                return None;
+            }
             Some(s) => s
         };
-        let ttype = Box::new(Node::Type(ttype));
+        let var_type = Box::new(Node::Type(var_type));
         //do not move the iterator yet to the current token as we will need
         //the identifier for the assignment too
         let peek = self.peek();
         let var_name = match identifier(peek) {
             None => {
                 println!("Expected identifier got {:?} instead", peek);
-                return None
-            },
+                return None;
+            }
             Some(x) => x
         };
         let next = self.next();
@@ -143,62 +143,61 @@ impl Parser {
             self.next(); //consume the semi colon
             Some(
                 Node::LocalVariableDeclaration {
-                    ttype,
+                    var_type: var_type,
                     name: var_name,
-                    value: None
+                    value: None,
                 }
             )
         } else {
             let assignment = self.assignment_statement(next)?;
             Some(
                 Node::LocalVariableDeclaration {
-                    ttype,
+                    var_type: var_type,
                     name: var_name,
-                    value: Option::from(Box::new(assignment))
+                    value: Option::from(Box::new(assignment)),
                 }
             )
-
-        }
+        };
     }
     /// Id := Expression ';'
     fn assignment_statement(&mut self, next: TokenKind) -> Option<Node> {
         let id = match identifier(&next) {
             None => {
                 println!("Expected Identifier got: {:?} instead", next);
-                return None
-            },
+                return None;
+            }
             Some(x) => x
         };
         let next = self.next();
         if next != TokenKind::Assign {
             println!("Expected ':=' got: {:?} instead", next);
-            return None
+            return None;
         }
         let value = self.expression()?;
 
         let next = self.next();
         if next != TokenKind::Semi {
             println!("Expected ';' got: {:?} instead", next);
-            return None
+            return None;
         }
 
         Some(
             Node::AssignmentStatement {
                 id,
-                value
+                value,
             }
         )
     }
     ///ReturnStmt -> RETURN expression ';'
     fn return_statement(&mut self) -> Option<Node> {
         if !matches(&self.next(), "RETURN") {
-            return None
+            return None;
         }
         let expression = self.expression()?;
         let next = self.next();
         if next != TokenKind::Semi {
             println!("Expected ';' got {:?} instead", next);
-            return None
+            return None;
         }
         Some(Node::ReturnStatement {
             expression
@@ -207,19 +206,19 @@ impl Parser {
     /// IfStmt  -> If '(' BoolExpression ')' Statement (ELSE Statement)?
     fn if_statement(&mut self) -> Option<Node> {
         if !matches(&self.next(), "IF") {
-            return None
+            return None;
         }
         let next = self.next();
         if next != TokenKind::Lparen {
             println!("Expected '(' got {:?} instead", next);
-            return None
+            return None;
         }
         let condition = self.bool_expression()?;
 
         let next = self.next();
         if next != TokenKind::Rparen {
             println!("Expected ')' got {:?} instead", next);
-            return None
+            return None;
         }
         let mut statements: Vec<Box<Node>> = vec![];
         statements.push(Box::new(self.statement()?));
@@ -233,7 +232,7 @@ impl Parser {
                     Node::Block {
                         statements
                     }
-                )
+                ),
             })
         })
     }
@@ -241,82 +240,83 @@ impl Parser {
     /// ReadStmt -> READ '(' Id ',' QString ')' ';'
     fn read_statement(&mut self) -> Option<Node> {
         if !matches(&self.next(), "READ") {
-            return None
+            return None;
         }
         let next = self.next();
         if next != TokenKind::Lparen {
             println!("Expected left parenthesis got {:?} instead", next);
-            return None
+            return None;
         }
         let id = identifier(&self.next())?;
 
         let next = self.next();
         if next != TokenKind::Comma {
             println!("Expected comma {:?} instead", next);
-            return None
+            return None;
         }
 
-        let value = self.q_string()?;
+        let value = self.next();
+        let value = self.q_string(value)?;
 
         let next = self.next();
         if next != TokenKind::Rparen {
             println!("Expected ')' got {:?} instead", next);
-            return None
+            return None;
         }
         let next = self.next();
         if next != TokenKind::Semi {
             println!("Expected ';' got {:?} instead", next);
-            return None
+            return None;
         }
 
         Some(Node::Statement {
             stmt: Box::new(Node::ReadStatement {
                 id,
-                q_string: value
+                q_string: value,
             })
         })
     }
     ///WriteStmt -> '(' Expression ',' QString ')' ';'
     fn write_statement(&mut self) -> Option<Node> {
         if !matches(&self.next(), "WRITE") {
-            return None
+            return None;
         }
         let next = self.next();
         if next != TokenKind::Lparen {
             println!("Expected left parenthesis got {:?} instead", next);
-            return None
+            return None;
         }
         let expression = self.expression()?;
 
         let next = self.next();
         if next != TokenKind::Comma {
             println!("Expected comma {:?} instead", next);
-            return None
+            return None;
         }
-        let value = self.q_string()?;
+
+        let value = self.next();
+        let value = self.q_string(value)?;
 
         let next = self.next();
         if next != TokenKind::Rparen {
             println!("Expected ')' got {:?} instead", next);
-            return None
+            return None;
         }
         let next = self.next();
         if next != TokenKind::Semi {
             println!("Expected ';' got {:?} instead", next);
-            return None
+            return None;
         }
         Some(Node::Statement {
             stmt: Box::new(Node::WriteStatement {
                 expression,
-                q_string: value
+                q_string: value,
             })
         })
-
     }
-
-    /// any value enclosed in quotation marks
-    fn q_string(&mut self) -> Option<Literal> {
-        let next = self.next();
+    /// String value
+    /// q_string -> "([^"]|\\")*"
+    fn q_string(&mut self, next: TokenKind) -> Option<Literal> {
         match next {
             TokenKind::Identifier(x) => Some(Literal::STRING(x)),
             _ => {
@@ -341,7 +341,7 @@ impl Parser {
             rhs.push(
                 Box::from(Expression::PlusMinus {
                     op,
-                    rhs: Box::new(rhs_exp)
+                    rhs: Box::new(rhs_exp),
                 })
             );
             peek = self.peek();
@@ -350,7 +350,7 @@ impl Parser {
         Some(
             Expression::Multiplicative {
                 lhs: Box::new(exp),
-                rhs
+                rhs,
             }
         )
     }
@@ -370,7 +370,7 @@ impl Parser {
             rhs.push(
                 Box::from(Expression::MulDiv {
                     op,
-                    rhs: Box::new(rhs_exp)
+                    rhs: Box::new(rhs_exp),
                 })
             );
             peek = self.peek();
@@ -379,7 +379,7 @@ impl Parser {
         Some(
             Expression::Multiplicative {
                 lhs: Box::new(exp),
-                rhs
+                rhs,
             }
         )
     }
@@ -396,13 +396,13 @@ impl Parser {
                 println!("Expected ')' got {:?} instead", next);
                 return None;
             }
-            return Some(Expression::Expression {value: Box::new(expr) })
+            return Some(Expression::Expression { value: Box::new(expr) });
         }
         return match next {
             TokenKind::Integer(i) => {
-                Some(Expression::Primitive {value: Literal::INT(i)})
+                Some(Expression::Primitive { value: Literal::INT(i) })
             }
-            TokenKind::Real(r) => Some(Expression::Primitive {value: Literal::REAL(r)}),
+            TokenKind::Real(r) => Some(Expression::Primitive { value: Literal::REAL(r) }),
             TokenKind::Identifier(s) => {
                 let peek = self.peek();
                 return if *peek == TokenKind::Lparen {
@@ -414,7 +414,7 @@ impl Parser {
                     let next = self.next();
                     if next != TokenKind::Rparen {
                         println!("Expected ')' got {:?} instead", next);
-                        return None
+                        return None;
                     }
                     Some(
                         Expression::MethodCall {
@@ -426,17 +426,16 @@ impl Parser {
                     Some(
                         Expression::Id(s)
                     )
-                }
+                };
             }
             _ => {
                 println!("Could not recognise expression to parse at token: {:?}", next);
                 None
             }
-        }
-
+        };
     }
     /// ActualParams -> [Expression ( ',' Expression)*]
-    fn actual_params(&mut self)-> Option<Expression> {
+    fn actual_params(&mut self) -> Option<Expression> {
         let mut params: Vec<Box<Expression>> = vec![];
         if let Some(param) = self.expression() {
             params.push(Box::new(param))
@@ -447,7 +446,7 @@ impl Parser {
             params.push(Box::new(self.expression()?));
         }
 
-        Some(Expression::ActualParameters {params})
+        Some(Expression::ActualParameters { params })
     }
 
     fn bool_expression(&mut self) -> Option<Expression> {
@@ -456,9 +455,9 @@ impl Parser {
         let operator = match next {
             TokenKind::Equal => { BoolOperator::Equal }
             TokenKind::NotEqual => { BoolOperator::NotEqual }
-            _=> {
+            _ => {
                 println!("Expected boolean operator got {:?} instead", next);
-                return None
+                return None;
             }
         };
         let rhs = self.expression()?;
@@ -466,9 +465,8 @@ impl Parser {
         Some(Expression::Boolean {
             lhs: Box::new(lhs),
             op: operator,
-            rhs: Box::new(rhs)
+            rhs: Box::new(rhs),
         })
-
     }
     /// FormalParams -> [FormalParam ( ',' FormalParam)*]
     fn formal_parameters(&mut self) -> Option<Node> {
@@ -482,19 +480,19 @@ impl Parser {
             params.push(Box::from(self.formal_parameter()?));
         }
 
-        Some(Node::FormalParameters {parameters: params})
+        Some(Node::FormalParameters { parameters: params })
     }
 
     /// FormalParam -> Type Id
     fn formal_parameter(&mut self) -> Option<Node> {
         let peek = self.peek();
-        let ttype = ttype(peek)?;
+        let param_type = to_type(peek)?;
         self.next(); // consume the peeked token since we found a parameter
         let next = self.next();
         let identifier = identifier(&next)?;
         Some(Node::FormalParameter {
-            ttype: Box::new(Node::Type(ttype)),
-            name: identifier
+            param_type: Box::new(Node::Type(param_type)),
+            name: identifier,
         })
     }
     ///We don't want to fail if we've reached the end so return a None reference
@@ -504,7 +502,6 @@ impl Parser {
     fn next(&mut self) -> TokenKind {
         self.tokens.next().unwrap_or(TokenKind::None)
     }
-
 }
 
 fn identifier(token: &TokenKind) -> Option<Expression> {
@@ -517,21 +514,23 @@ fn identifier(token: &TokenKind) -> Option<Expression> {
     }
 }
 
-fn ttype(token: &TokenKind) -> Option<String>{
+fn to_type(token: &TokenKind) -> Option<String> {
     match token {
-        TokenKind::Identifier(x) if (x=="INT" || x=="REAL" || x=="STRING") => Some(x.clone()),
+        TokenKind::Identifier(x) if (x == "INT" || x == "REAL" || x == "STRING") => Some(x.clone()),
         _ => None
     }
 }
-fn matches(token: &TokenKind, target: &str) ->bool {
+
+fn matches(token: &TokenKind, target: &str) -> bool {
     match token {
-        TokenKind::Identifier(x) if x == target => true ,
+        TokenKind::Identifier(x) if x == target => true,
         _ => false
     }
 }
+
 #[derive(Debug)]
 pub(crate) enum Node {
-    Program{
+    Program {
         method_declarations: Vec<Box<Node>>
     },
     MethodDeclaration {
@@ -539,47 +538,48 @@ pub(crate) enum Node {
         return_type: Box<Node>,
         body: Box<Node>,
         is_main: bool,
-        formal_parameters: Option<Box<Node>>
+        formal_parameters: Option<Box<Node>>,
     },
     Block {
-      statements: Vec<Box<Node>>
+        statements: Vec<Box<Node>>
     },
     Statement {
-      stmt: Box<Node>
+        stmt: Box<Node>
     },
     LocalVariableDeclaration {
-        ttype: Box<Node>,
+        var_type: Box<Node>,
         name: Expression,
-        value: Option<Box<Node>>
+        value: Option<Box<Node>>,
     },
     AssignmentStatement {
         id: Expression,
-        value: Expression
+        value: Expression,
     },
     ReturnStatement {
         expression: Expression,
     },
     IfStatement {
         condition: Expression,
-        body: Box<Node>
+        body: Box<Node>,
     },
     ReadStatement {
         id: Expression,
-        q_string: Literal
+        q_string: Literal,
     },
     WriteStatement {
         expression: Expression,
-        q_string: Literal
+        q_string: Literal,
     },
     Type(String),
-    FormalParameters{
+    FormalParameters {
         parameters: Vec<Box<Node>>
     },
     FormalParameter {
-        ttype: Box<Node>,
-        name: Expression
-    }
+        param_type: Box<Node>,
+        name: Expression,
+    },
 }
+
 #[derive(Debug)]
 pub(crate) enum Expression {
     Expression {
@@ -587,15 +587,15 @@ pub(crate) enum Expression {
     },
     Multiplicative {
         lhs: Box<Expression>,
-        rhs: Vec<Box<Expression>>
+        rhs: Vec<Box<Expression>>,
     },
     PlusMinus {
         op: MathOperator,
-        rhs: Box<Expression>
+        rhs: Box<Expression>,
     },
     MulDiv {
         op: MathOperator,
-        rhs: Box<Expression>
+        rhs: Box<Expression>,
     },
     Primitive {
         value: Literal
@@ -603,27 +603,29 @@ pub(crate) enum Expression {
     Id(String),
     MethodCall {
         id: Box<Expression>,
-        params: Option<Box<Expression>>
+        params: Option<Box<Expression>>,
     },
-    Boolean{
+    Boolean {
         lhs: Box<Expression>,
         rhs: Box<Expression>,
-        op: BoolOperator
+        op: BoolOperator,
     },
     ActualParameters {
         params: Vec<Box<Expression>>
     },
 }
+
 #[derive(Debug)]
 pub(crate) enum Literal {
     STRING(String),
     INT(usize),
-    REAL(f64)
+    REAL(f64),
 }
+
 #[derive(Debug)]
 pub(crate) enum BoolOperator {
     Equal,
-    NotEqual
+    NotEqual,
 }
 
 #[derive(Debug)]
@@ -631,7 +633,7 @@ pub(crate) enum MathOperator {
     Plus,
     Minus,
     Mul,
-    Div
+    Div,
 }
 
 

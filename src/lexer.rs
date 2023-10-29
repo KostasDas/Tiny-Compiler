@@ -11,14 +11,17 @@ impl Tokenizer {
             let mut kind = TokenKind::None;
             match c {
                 '/' => {
-                    let peek_next = chars.peek().expect("Could not end in \"/\"");
+                    let peek_next = chars.peek().expect("Syntax error; cannot end in \"/\"");
                     // ignore comments
                     if *peek_next == '*' {
-                        let peek_next = chars.peek().expect("Could not end in \"/\"");
+                        chars.next();
+                        let peek_next = chars.peek().expect("Syntax error; cannot end in \"/\"");
                         if *peek_next == '*' {
+                            chars.next();
                             let mut last_two = vec![];
-                            for ch in chars.by_ref() {
-                                // if last two + '/' are **/
+                            // consume tokens while we are still in the multi line comment
+                            while let Some (ch) = chars.next() {
+                                // if last two + '/' are **/ the comment is closed.
                                 if ch == '/' && last_two.clone().into_iter().all(|l| l == '*') {
                                     break
                                 }
@@ -41,20 +44,20 @@ impl Tokenizer {
                 '-' => kind = TokenKind::Minus,
                 ' '|'\n'|'\r' => {}
                 ':' => {
-                    let next = chars.next().expect("Program cannot end in :");
+                    let next = chars.next().expect("Syntax error; cannot end in \":\"");
                     if next == '=' {
                         kind = TokenKind::Assign
                     }
 
                 }
                 '=' => {
-                    let next = chars.next().expect("Program cannot end in =");
+                    let next = chars.next().expect("Syntax error; cannot end in \"=\"");
                     if next == '=' {
                         kind = TokenKind::Equal
                     }
                 }
                 '!' => {
-                    let next = chars.next().expect("Program cannot end in !");
+                    let next = chars.next().expect("Syntax error; cannot end in \"!\"");
                     if next == '=' {
                         kind = TokenKind::NotEqual
                     }
@@ -123,9 +126,7 @@ pub enum TokenKind {
     Equal,
     NotEqual,
     None
-
 }
-
 
 impl From<String> for TokenKind {
     fn from(value: String) -> TokenKind {
