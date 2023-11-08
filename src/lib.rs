@@ -14,7 +14,7 @@ pub fn compile(code: String) {
     let syntax_tree = parser.parse().expect("Failed");
     println!("{:#?}", syntax_tree);
 
-    let mut tac_visitor = ThreeAddressCodeVisitor{};
-    let tac = syntax_tree.accept(&mut tac_visitor);
+    let tac_visitor = ThreeAddressCodeVisitor{};
+    let tac = syntax_tree.accept(&tac_visitor);
     println!("{:#?}", tac)
 }
