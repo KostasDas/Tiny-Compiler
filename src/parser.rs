@@ -2,6 +2,7 @@ use std::iter::Peekable;
 use std::vec::IntoIter;
 use crate::lexer::TokenKind;
 
+//todo create error reporter with lines and columns
 #[derive(Debug)]
 pub(crate) enum ParseError {
     SyntaxError(String),
@@ -529,7 +530,7 @@ fn matches(token: &TokenKind, target: &str) -> bool {
 }
 
 #[derive(Debug)]
-pub(crate) enum Node {
+pub enum Node {
     Program {
         method_declarations: Vec<Box<Node>>
     },
@@ -580,8 +581,10 @@ pub(crate) enum Node {
     },
 }
 
+
+
 #[derive(Debug)]
-pub(crate) enum Expression {
+pub enum Expression {
     Expression {
         value: Box<Expression>
     },
@@ -616,20 +619,21 @@ pub(crate) enum Expression {
 }
 
 #[derive(Debug)]
-pub(crate) enum Literal {
+pub enum Literal {
     STRING(String),
     INT(usize),
     REAL(f64),
 }
 
+
 #[derive(Debug)]
-pub(crate) enum BoolOperator {
+pub enum BoolOperator {
     Equal,
     NotEqual,
 }
 
 #[derive(Debug)]
-pub(crate) enum MathOperator {
+pub enum MathOperator {
     Plus,
     Minus,
     Mul,
