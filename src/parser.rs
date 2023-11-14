@@ -61,7 +61,7 @@ impl Parser {
         }
         let body = self.block()?;
         Some(
-            Node::MethodDeclaration {
+            Node::FunctionDeclaration {
                 return_type: Box::new(Node::Type(return_type)),
                 is_main,
                 name: method_name,
@@ -534,7 +534,7 @@ pub enum Node {
     Program {
         method_declarations: Vec<Box<Node>>
     },
-    MethodDeclaration {
+    FunctionDeclaration {
         name: Expression,
         return_type: Box<Node>,
         body: Box<Node>,

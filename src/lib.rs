@@ -1,4 +1,4 @@
-use crate::tac::{ThreeAddressCodeVisitor, Visitable};
+use crate::tac::{Context, ThreeAddressCodeVisitor, Visitable};
 
 pub mod lexer;
 pub mod parser;
@@ -15,6 +15,6 @@ pub fn compile(code: String) {
     println!("{:#?}", syntax_tree);
 
     let tac_visitor = ThreeAddressCodeVisitor{};
-    let tac = syntax_tree.accept(&tac_visitor);
+    let tac = syntax_tree.accept(&tac_visitor, &Context::new());
     println!("{:#?}", tac)
 }
